@@ -63,12 +63,27 @@ Your output MUST be valid JSON matching this exact schema. Do not include any te
 
 Bounding box coordinates must be normalized 0-1 (top-left origin). Return only valid JSON.`;
 
+function detectMimeType(buffer) {
+  if (buffer.length < 12) return null;
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) return 'image/jpeg';
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) return 'image/png';
+  // GIF: 47 49 46 38
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) return 'image/gif';
+  // WebP: RIFF....WEBP
+  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+      buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) return 'image/webp';
+  return null;
+}
+
 app.post('/api/label', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
     const base64 = req.file.buffer.toString('base64');
-    const mediaType = req.file.mimetype;
+    const detected = detectMimeType(req.file.buffer);
+    const mediaType = detected || req.file.mimetype;
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',

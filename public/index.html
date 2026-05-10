@@ -287,6 +287,109 @@
 
     .preview-img { max-width: 100%; max-height: 280px; border-radius: 8px; margin-top: 16px; border: 1px solid var(--border); }
 
+    .mode-toggle {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      background: rgba(2, 8, 16, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px;
+    }
+    .mode-btn {
+      flex: 1;
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      padding: 10px 16px;
+      border-radius: 7px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .mode-btn.active {
+      background: linear-gradient(135deg, #0ea5e9, #22d3ee);
+      color: #020810;
+      font-weight: 700;
+    }
+
+    .batch-queue {
+      margin-top: 16px;
+      max-height: 280px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .queue-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(2, 8, 16, 0.6);
+      border: 1px solid rgba(14, 165, 233, 0.12);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+    .queue-thumb {
+      width: 48px; height: 48px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .queue-meta { flex: 1; min-width: 0; }
+    .queue-name { font-size: 12px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .queue-status { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 3px; }
+    .queue-status.processing { color: var(--amber); }
+    .queue-status.done { color: var(--green); }
+    .queue-status.error { color: var(--red); }
+
+    .batch-progress {
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: rgba(14, 165, 233, 0.08);
+      border: 1px solid rgba(14, 165, 233, 0.2);
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .batch-progress-text { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--cyan); }
+    .batch-progress-bar { width: 200px; height: 4px; background: rgba(2,8,16,0.5); border-radius: 2px; overflow: hidden; }
+    .batch-progress-fill { height: 100%; background: linear-gradient(90deg, #0ea5e9, #22d3ee); transition: width 0.3s; }
+
+    .frame-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+      max-height: 480px;
+      overflow-y: auto;
+    }
+    .frame-card {
+      background: rgba(2, 8, 16, 0.6);
+      border: 1px solid rgba(14, 165, 233, 0.12);
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .frame-card canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-bottom: 1px solid var(--border);
+    }
+    .frame-card-info {
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .frame-card-title { font-family: 'Space Grotesk', sans-serif; font-size: 11px; color: var(--text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .frame-card-meta { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted); display: flex; justify-content: space-between; }
+
     @media (max-width: 860px) {
       .grid-main { grid-template-columns: 1fr; }
       .meta-grid { grid-template-columns: 1fr; }
@@ -328,16 +431,23 @@
     <div class="upload-panel">
       <div class="panel-title">Image Submission — EO/IR or FMV Frame</div>
 
+      <div class="mode-toggle" id="modeToggle">
+        <button class="mode-btn active" data-mode="single" onclick="setMode('single')">Single Frame</button>
+        <button class="mode-btn" data-mode="batch" onclick="setMode('batch')">FMV Batch (Multi-Frame)</button>
+      </div>
+
       <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
         <div class="dropzone-icon">⬡</div>
-        <div class="dropzone-text">Drop image or click to upload</div>
-        <div class="dropzone-sub">JPG · PNG · WEBP · MAX 15MB</div>
+        <div class="dropzone-text" id="dropzoneText">Drop image or click to upload</div>
+        <div class="dropzone-sub" id="dropzoneSub">JPG · PNG · WEBP · MAX 15MB</div>
       </div>
 
       <input type="file" id="fileInput" accept="image/*" />
       <img id="previewImg" class="preview-img" style="display:none;" />
 
-      <button class="run-btn" id="submitBtn" onclick="runLabel()" disabled>Auto-Label This Image</button>
+      <div class="batch-queue" id="batchQueue" style="display:none;"></div>
+
+      <button class="run-btn" id="submitBtn" onclick="runLabel()" disabled>Auto-Label</button>
     </div>
 
     <div class="loading" id="loading">
@@ -379,6 +489,24 @@
         <pre id="jsonOutput"></pre>
       </div>
 
+    </div>
+
+    <div class="results" id="batchResults">
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-title">FMV Sequence — Annotated Frame Grid</div>
+        <div class="frame-grid" id="frameGrid"></div>
+      </div>
+
+      <div class="panel json-panel">
+        <div class="json-header">
+          <div class="json-title">Combined COCO-JSON — All Frames</div>
+          <div class="btn-row">
+            <button class="copy-btn" onclick="copyBatchJSON()">COPY</button>
+            <button class="download-btn" onclick="downloadBatchJSON()">DOWNLOAD</button>
+          </div>
+        </div>
+        <pre id="batchJsonOutput"></pre>
+      </div>
     </div>
   </div>
 
@@ -594,27 +722,64 @@
 })();
 
 // ── APP STATE ──
+let mode = 'single';
 let currentFile = null;
 let currentImage = null;
+let currentFiles = [];
 let lastResult = null;
+let lastBatchResult = null;
 
-// File handling
 const fileInput = document.getElementById('fileInput');
 const dropzone = document.getElementById('dropzone');
 const previewImg = document.getElementById('previewImg');
 const submitBtn = document.getElementById('submitBtn');
+const batchQueue = document.getElementById('batchQueue');
 
-fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+  fileInput.toggleAttribute('multiple', m === 'batch');
+  document.getElementById('dropzoneText').textContent =
+    m === 'batch' ? 'Drop multiple frames or click to upload' : 'Drop image or click to upload';
+  document.getElementById('dropzoneSub').textContent =
+    m === 'batch' ? 'Select up to 12 FMV frames · MAX 15MB EACH' : 'JPG · PNG · WEBP · MAX 15MB';
+  submitBtn.textContent = m === 'batch' ? 'Auto-Label FMV Sequence' : 'Auto-Label';
+  resetState();
+}
+
+function resetState() {
+  currentFile = null;
+  currentImage = null;
+  currentFiles = [];
+  previewImg.style.display = 'none';
+  batchQueue.style.display = 'none';
+  batchQueue.innerHTML = '';
+  submitBtn.disabled = true;
+  document.getElementById('results').classList.remove('visible');
+  document.getElementById('batchResults').classList.remove('visible');
+}
+
+fileInput.addEventListener('change', e => handleFiles(Array.from(e.target.files)));
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
 dropzone.addEventListener('drop', e => {
   e.preventDefault();
   dropzone.classList.remove('drag');
-  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  handleFiles(Array.from(e.dataTransfer.files));
 });
 
-function handleFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
+function handleFiles(files) {
+  files = files.filter(f => f.type.startsWith('image/'));
+  if (!files.length) return;
+
+  if (mode === 'single') {
+    handleSingleFile(files[0]);
+  } else {
+    handleBatchFiles(files.slice(0, 12));
+  }
+}
+
+function handleSingleFile(file) {
   currentFile = file;
   const reader = new FileReader();
   reader.onload = e => {
@@ -628,11 +793,51 @@ function handleFile(file) {
   submitBtn.disabled = false;
 }
 
+function handleBatchFiles(files) {
+  currentFiles = files.map(f => ({ file: f, status: 'queued', result: null, image: null }));
+  batchQueue.innerHTML = '';
+  batchQueue.style.display = 'flex';
+
+  currentFiles.forEach((item, idx) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => { item.image = img; };
+      img.src = e.target.result;
+
+      const row = document.createElement('div');
+      row.className = 'queue-row';
+      row.id = `queue-${idx}`;
+      row.innerHTML = `
+        <img class="queue-thumb" src="${e.target.result}" />
+        <div class="queue-meta">
+          <div class="queue-name">${item.file.name}</div>
+          <div class="queue-status" id="queue-status-${idx}">QUEUED · ${(item.file.size/1024).toFixed(0)} KB</div>
+        </div>
+      `;
+      batchQueue.appendChild(row);
+    };
+    reader.readAsDataURL(item.file);
+  });
+
+  submitBtn.disabled = false;
+}
+
 async function runLabel() {
-  if (!currentFile) return;
   submitBtn.disabled = true;
+  if (mode === 'single') {
+    await runSingle();
+  } else {
+    await runBatch();
+  }
+  submitBtn.disabled = false;
+}
+
+async function runSingle() {
+  if (!currentFile) return;
   document.getElementById('loading').classList.add('visible');
   document.getElementById('results').classList.remove('visible');
+  document.getElementById('batchResults').classList.remove('visible');
 
   const formData = new FormData();
   formData.append('image', currentFile);
@@ -647,8 +852,141 @@ async function runLabel() {
     alert('Error: ' + err.message);
   } finally {
     document.getElementById('loading').classList.remove('visible');
-    submitBtn.disabled = false;
   }
+}
+
+async function runBatch() {
+  if (!currentFiles.length) return;
+  document.getElementById('loading').classList.add('visible');
+  document.getElementById('results').classList.remove('visible');
+  document.getElementById('batchResults').classList.remove('visible');
+
+  const frameGrid = document.getElementById('frameGrid');
+  frameGrid.innerHTML = '';
+  const allFrames = [];
+  let frameId = 1;
+  let totalAnnotations = 0;
+
+  for (let i = 0; i < currentFiles.length; i++) {
+    const item = currentFiles[i];
+    const statusEl = document.getElementById(`queue-status-${i}`);
+    statusEl.className = 'queue-status processing';
+    statusEl.textContent = `PROCESSING (${i+1}/${currentFiles.length})...`;
+
+    try {
+      const formData = new FormData();
+      formData.append('image', item.file);
+      const res = await fetch('/api/label', { method: 'POST', body: formData });
+      if (!res.ok) throw new Error((await res.json()).error || 'Request failed');
+      const data = await res.json();
+      item.result = data;
+      item.status = 'done';
+
+      const annCount = (data.annotations || []).length;
+      totalAnnotations += annCount;
+
+      statusEl.className = 'queue-status done';
+      statusEl.textContent = `✓ DONE · ${annCount} OBJECTS LABELED`;
+
+      // Add to frame grid
+      addFrameToGrid(item, i);
+
+      // Add to combined COCO
+      allFrames.push({
+        frameId: frameId++,
+        fileName: item.file.name,
+        ...data
+      });
+    } catch (err) {
+      item.status = 'error';
+      statusEl.className = 'queue-status error';
+      statusEl.textContent = `✕ ERROR · ${err.message}`;
+    }
+  }
+
+  // Build combined COCO output
+  const combinedCOCO = {
+    info: {
+      description: 'Fisher Intelligent Systems — FMV Batch Auto-Labeling',
+      version: '1.0',
+      contributor: 'Fisher Intelligent Systems',
+      date_created: new Date().toISOString(),
+      sponsor: 'CDAO Enterprise Autonomy Division',
+      total_frames: allFrames.length,
+      total_annotations: totalAnnotations
+    },
+    frames: allFrames
+  };
+
+  lastBatchResult = combinedCOCO;
+  document.getElementById('batchJsonOutput').textContent = JSON.stringify(combinedCOCO, null, 2);
+  document.getElementById('loading').classList.remove('visible');
+  document.getElementById('batchResults').classList.add('visible');
+}
+
+function addFrameToGrid(item, idx) {
+  if (!item.result || !item.image) return;
+  const card = document.createElement('div');
+  card.className = 'frame-card';
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const W = item.image.naturalWidth;
+  const H = item.image.naturalHeight;
+  canvas.width = W;
+  canvas.height = H;
+  ctx.drawImage(item.image, 0, 0);
+
+  const colors = ['#22d3ee', '#10b981', '#f59e0b', '#a78bfa', '#f472b6', '#fb923c'];
+  (item.result.annotations || []).forEach((ann, j) => {
+    const c = colors[j % colors.length];
+    const [x, y, w, h] = ann.bbox;
+    ctx.strokeStyle = c;
+    ctx.lineWidth = Math.max(2, W / 400);
+    ctx.strokeRect(x * W, y * H, w * W, h * H);
+    ctx.fillStyle = c;
+    ctx.font = `bold ${Math.max(14, W/60)}px 'Space Grotesk', sans-serif`;
+    const label = `${ann.category}`;
+    const tw = ctx.measureText(label).width + 12;
+    const th = Math.max(20, W/40);
+    ctx.fillRect(x * W, y * H - th, tw, th);
+    ctx.fillStyle = '#020810';
+    ctx.fillText(label, x * W + 6, y * H - 6);
+  });
+
+  const sceneStr = item.result.scene_conditions
+    ? `${item.result.scene_conditions.weather || '–'} · ${item.result.scene_conditions.lighting || '–'}`
+    : '–';
+
+  card.innerHTML = `
+    <div class="frame-card-info">
+      <div class="frame-card-title">FRAME ${String(idx+1).padStart(3,'0')} · ${item.file.name}</div>
+      <div class="frame-card-meta">
+        <span>${(item.result.annotations || []).length} OBJECTS</span>
+        <span>${sceneStr.toUpperCase()}</span>
+      </div>
+    </div>
+  `;
+  card.insertBefore(canvas, card.firstChild);
+  document.getElementById('frameGrid').appendChild(card);
+}
+
+function copyBatchJSON() {
+  if (!lastBatchResult) return;
+  navigator.clipboard.writeText(JSON.stringify(lastBatchResult, null, 2));
+  event.target.textContent = 'COPIED ✓';
+  setTimeout(() => event.target.textContent = 'COPY', 2000);
+}
+
+function downloadBatchJSON() {
+  if (!lastBatchResult) return;
+  const blob = new Blob([JSON.stringify(lastBatchResult, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `fmv_batch_annotations_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function renderResults(data) {

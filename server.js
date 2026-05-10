@@ -10,68 +10,107 @@ app.use(express.static('public'));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+const LABELING_TOOL = {
+  name: 'submit_coco_annotation',
+  description: 'Submit the complete COCO-JSON annotation set with extended DOTA + BOP metadata for the analyzed image. Always call this tool with full annotation data.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      image_metadata: {
+        type: 'object',
+        properties: {
+          domain: { type: 'string', description: 'One of: maritime, aerial, terrestrial, sub-surface' },
+          sensor_type: { type: 'string', description: 'One of: EO, IR, EO/IR, RGB, thermal, multispectral' },
+          estimated_resolution: { type: 'string' },
+          look_angle: { type: 'string', description: 'Estimated degrees from nadir, e.g. "45deg oblique"' },
+          distortion_factors: { type: 'array', items: { type: 'string' } }
+        },
+        required: ['domain', 'sensor_type']
+      },
+      scene_conditions: {
+        type: 'object',
+        properties: {
+          weather: { type: 'string' },
+          lighting: { type: 'string' },
+          lighting_source_orientation: { type: 'string' },
+          visibility_quality: { type: 'string' }
+        },
+        required: ['weather', 'lighting']
+      },
+      annotations: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer' },
+            category: { type: 'string' },
+            category_id: { type: 'integer' },
+            confidence: { type: 'number', description: 'Detection confidence 0-1' },
+            bbox: {
+              type: 'array',
+              items: { type: 'number' },
+              description: '[x, y, width, height] normalized 0-1, top-left origin'
+            },
+            oriented_bbox: {
+              type: 'object',
+              properties: {
+                cx: { type: 'number' },
+                cy: { type: 'number' },
+                w: { type: 'number' },
+                h: { type: 'number' },
+                angle_deg: { type: 'number' }
+              }
+            },
+            estimated_dimensions: {
+              type: 'object',
+              properties: {
+                length_m: { type: 'string' },
+                width_m: { type: 'string' },
+                height_m: { type: 'string' }
+              }
+            },
+            pose_6dof: {
+              type: 'object',
+              properties: {
+                yaw_deg: { type: 'number' },
+                pitch_deg: { type: 'number' },
+                roll_deg: { type: 'number' },
+                bearing_relative_to_sensor_deg: { type: 'number' }
+              }
+            },
+            occlusion_percent: { type: 'number' },
+            key_features: { type: 'array', items: { type: 'string' } },
+            semantic_segmentation_description: { type: 'string' }
+          },
+          required: ['id', 'category', 'confidence', 'bbox']
+        }
+      },
+      categories: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer' },
+            name: { type: 'string' },
+            supercategory: { type: 'string' }
+          },
+          required: ['id', 'name']
+        }
+      }
+    },
+    required: ['image_metadata', 'scene_conditions', 'annotations', 'categories']
+  }
+};
+
 const SYSTEM_PROMPT = `You are an advanced computer vision data labeling system for the U.S. Department of War CDAO Enterprise Autonomy Division. Your role is to analyze imagery (EO/IR / FMV frames) and produce COCO-JSON formatted annotations for training autonomous platform CV models.
 
-For each image, generate annotations beyond simple bounding boxes — include the rich metadata required for training next-generation autonomous systems.
-
-Your output MUST be valid JSON matching this exact schema. Do not include any text before or after the JSON.
-
-{
-  "image_metadata": {
-    "domain": "maritime|aerial|terrestrial|sub-surface",
-    "sensor_type": "EO|IR|EO/IR|RGB|thermal|multispectral",
-    "estimated_resolution": "string description",
-    "look_angle": "estimated degrees from nadir, e.g. '45deg oblique'",
-    "distortion_factors": ["string array"]
-  },
-  "scene_conditions": {
-    "weather": "sunny|cloudy|partly cloudy|foggy|rainy|snow|hazy|clear",
-    "lighting": "daylight|dusk|night|low-light|backlit|overcast",
-    "lighting_source_orientation": "front-lit|back-lit|side-lit|top-lit|ambient",
-    "visibility_quality": "high|medium|low|very low"
-  },
-  "annotations": [
-    {
-      "id": 1,
-      "category": "specific object class",
-      "category_id": 1,
-      "confidence": 0.95,
-      "bbox": [x_normalized, y_normalized, width_normalized, height_normalized],
-      "oriented_bbox": {
-        "cx": 0.5, "cy": 0.5, "w": 0.2, "h": 0.1, "angle_deg": 15
-      },
-      "estimated_dimensions": {
-        "length_m": "estimate or null",
-        "width_m": "estimate or null",
-        "height_m": "estimate or null"
-      },
-      "pose_6dof": {
-        "yaw_deg": 0,
-        "pitch_deg": 0,
-        "roll_deg": 0,
-        "bearing_relative_to_sensor_deg": 0
-      },
-      "occlusion_percent": 0,
-      "key_features": ["array of distinguishing features visible"],
-      "semantic_segmentation_description": "plain-language description of object boundaries and key feature locations"
-    }
-  ],
-  "categories": [
-    { "id": 1, "name": "object class", "supercategory": "vehicle|vessel|aircraft|person|infrastructure|other" }
-  ]
-}
-
-Bounding box coordinates must be normalized 0-1 (top-left origin). Return only valid JSON.`;
+Always call the submit_coco_annotation tool with your complete analysis. Identify every distinct object visible. Bounding box coordinates must be normalized 0-1 with top-left origin. For maritime/aerial/military imagery, identify vessels, aircraft, vehicles, personnel, and infrastructure with appropriate categorization. Always populate scene_conditions and image_metadata.`;
 
 function detectMimeType(buffer) {
   if (buffer.length < 12) return null;
-  // JPEG: FF D8 FF
   if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) return 'image/jpeg';
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
   if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) return 'image/png';
-  // GIF: 47 49 46 38
   if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) return 'image/gif';
-  // WebP: RIFF....WEBP
   if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
       buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) return 'image/webp';
   return null;
@@ -87,43 +126,28 @@ app.post('/api/label', upload.single('image'), async (req, res) => {
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
+      max_tokens: 8000,
       system: SYSTEM_PROMPT,
+      tools: [LABELING_TOOL],
+      tool_choice: { type: 'tool', name: 'submit_coco_annotation' },
       messages: [{
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-          { type: 'text', text: 'Analyze this image and produce the full COCO-JSON annotation with all extended metadata fields. Identify every distinct object visible. Return only the JSON.' }
+          { type: 'text', text: 'Analyze this image and submit the full COCO-JSON annotation via the tool. Include every distinct object with extended metadata.' }
         ]
       }]
     });
 
-    let text = message.content[0].text.trim();
-
-    // Strip markdown code fences (any variation)
-    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-
-    // If there's any preamble or trailing text, extract just the JSON object
-    if (!text.startsWith('{')) {
-      const firstBrace = text.indexOf('{');
-      const lastBrace = text.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace > firstBrace) {
-        text = text.substring(firstBrace, lastBrace + 1);
-      }
+    const toolUse = message.content.find(b => b.type === 'tool_use');
+    if (!toolUse) {
+      console.error('No tool_use in response. Stop reason:', message.stop_reason);
+      console.error('Content:', JSON.stringify(message.content).substring(0, 800));
+      return res.status(500).json({ error: 'Model did not produce structured output. Try a different image.' });
     }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch (e) {
-      console.error('JSON parse failed. Raw response (first 500 chars):', text.substring(0, 500));
-      return res.status(500).json({
-        error: 'Model returned non-JSON output',
-        raw: text.substring(0, 1500)
-      });
-    }
+    const parsed = toolUse.input;
 
-    // Wrap in standard COCO container with image record
     const output = {
       info: {
         description: 'Fisher Intelligent Systems — Advanced CV Auto-Labeling',
@@ -135,15 +159,15 @@ app.post('/api/label', upload.single('image'), async (req, res) => {
       images: [{
         id: 1,
         file_name: req.file.originalname,
-        width: parsed.image_width || null,
-        height: parsed.image_height || null
+        width: null,
+        height: null
       }],
       ...parsed
     };
 
     res.json(output);
   } catch (err) {
-    console.error(err);
+    console.error('Labeling error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

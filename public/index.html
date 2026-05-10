@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fisher Intelligent Systems — Advanced CV Labeling</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #020810;
+      --blue: #0ea5e9;
+      --cyan: #22d3ee;
+      --green: #10b981;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --panel: rgba(8, 20, 40, 0.78);
+      --border: rgba(14, 165, 233, 0.18);
+      --text: #e2f0ff;
+      --muted: #4a7a9b;
+    }
+
+    html, body { width: 100%; min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; overflow-x: hidden; }
+
+    #canvas-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+
+    .ui { position: relative; z-index: 10; min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* HEADER */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 40px;
+      background: rgba(2, 8, 16, 0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-wrap { display: flex; align-items: center; gap: 14px; }
+    .logo-hex {
+      width: 42px; height: 42px;
+      background: linear-gradient(135deg, #0ea5e9, #22d3ee);
+      clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 20px rgba(14,165,233,0.4);
+      animation: hexPulse 3s ease-in-out infinite;
+    }
+    @keyframes hexPulse { 0%,100%{box-shadow:0 0 20px rgba(14,165,233,0.4);} 50%{box-shadow:0 0 40px rgba(14,165,233,0.7);} }
+    .logo-company { font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: 0.5px; }
+    .logo-product { font-size: 10px; color: var(--muted); letter-spacing: 3px; text-transform: uppercase; margin-top: 1px; }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 7px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 11px; color: var(--green);
+      letter-spacing: 1px;
+    }
+    .status-dot { width: 7px; height: 7px; background: var(--green); border-radius: 50%; animation: blink 2s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+    .header-right { text-align: right; font-size: 11px; color: var(--muted); line-height: 1.8; letter-spacing: 0.5px; }
+
+    /* HERO */
+    .hero { display: flex; flex-direction: column; align-items: center; padding: 48px 40px 24px; text-align: center; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(14, 165, 233, 0.1);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 18px;
+      font-size: 11px;
+      color: var(--cyan);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 700;
+      line-height: 1.15;
+      background: linear-gradient(135deg, #e2f0ff 0%, #0ea5e9 50%, #22d3ee 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+      max-width: 800px;
+    }
+    .hero p { font-size: 14px; color: var(--muted); max-width: 620px; line-height: 1.7; }
+
+    /* MAIN */
+    .main-wrap { max-width: 1200px; margin: 24px auto 60px; padding: 0 24px; width: 100%; }
+
+    .upload-panel {
+      background: var(--panel);
+      backdrop-filter: blur(24px);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 8px 60px rgba(0,0,0,0.5);
+    }
+
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 60px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(2, 8, 16, 0.5);
+    }
+    .dropzone:hover, .dropzone.drag {
+      border-color: var(--blue);
+      background: rgba(14, 165, 233, 0.05);
+    }
+    .dropzone-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+    .dropzone-text { font-family: 'Space Grotesk', sans-serif; font-size: 16px; color: var(--text); margin-bottom: 8px; }
+    .dropzone-sub { font-size: 12px; color: var(--muted); letter-spacing: 1px; }
+
+    #fileInput { display: none; }
+
+    .run-btn {
+      background: linear-gradient(135deg, #0ea5e9, #22d3ee);
+      color: #020810;
+      border: none;
+      padding: 14px 36px;
+      border-radius: 10px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 20px rgba(14, 165, 233, 0.35);
+      margin-top: 20px;
+      width: 100%;
+    }
+    .run-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(14, 165, 233, 0.55); }
+    .run-btn:disabled { background: rgba(14, 165, 233, 0.2); color: var(--muted); cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* LOADING */
+    .loading { display: none; text-align: center; padding: 50px 20px; }
+    .loading.visible { display: block; }
+    .loader-ring {
+      width: 48px; height: 48px;
+      border: 2px solid rgba(14, 165, 233, 0.15);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading p { font-size: 11px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; }
+
+    /* RESULTS */
+    .results { display: none; margin-top: 24px; }
+    .results.visible { display: block; animation: fadeUp 0.4s ease; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+    .grid-main {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .panel {
+      background: var(--panel);
+      backdrop-filter: blur(24px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+    }
+
+    .panel-title {
+      font-size: 10px;
+      letter-spacing: 3px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel-title::before {
+      content: '';
+      width: 4px; height: 14px;
+      background: linear-gradient(180deg, var(--blue), var(--cyan));
+      border-radius: 2px;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      width: 100%;
+      background: rgba(2, 8, 16, 0.6);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(14, 165, 233, 0.1);
+    }
+    #imgCanvas { display: block; width: 100%; height: auto; }
+
+    /* META */
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .meta-card {
+      background: rgba(2, 8, 16, 0.6);
+      border: 1px solid rgba(14, 165, 233, 0.1);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .meta-label { font-size: 9px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+    .meta-value { font-family: 'Space Grotesk', sans-serif; font-size: 14px; color: var(--text); font-weight: 500; }
+
+    /* OBJECT LIST */
+    .obj-list { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; }
+    .obj-row {
+      background: rgba(2, 8, 16, 0.6);
+      border: 1px solid rgba(14, 165, 233, 0.12);
+      border-radius: 10px;
+      padding: 12px 14px;
+      transition: border-color 0.2s;
+    }
+    .obj-row:hover { border-color: var(--blue); }
+    .obj-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .obj-name { font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600; color: var(--text); }
+    .obj-conf { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--cyan); }
+    .obj-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .obj-pill {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      background: rgba(14, 165, 233, 0.06);
+      padding: 4px 8px;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .obj-features { font-size: 10px; color: var(--muted); margin-top: 8px; line-height: 1.5; font-style: italic; }
+
+    /* JSON PANEL */
+    .json-panel { margin-bottom: 16px; }
+    .json-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+    .json-title { font-size: 10px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+    .json-title::before { content: ''; width: 4px; height: 14px; background: linear-gradient(180deg, var(--blue), var(--cyan)); border-radius: 2px; }
+
+    .btn-row { display: flex; gap: 8px; }
+
+    .copy-btn, .download-btn {
+      background: rgba(14, 165, 233, 0.1);
+      color: var(--blue);
+      border: 1px solid rgba(14, 165, 233, 0.25);
+      padding: 6px 16px;
+      border-radius: 8px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover, .download-btn:hover { background: rgba(14, 165, 233, 0.2); border-color: var(--blue); }
+
+    pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #4a9eca;
+      line-height: 1.7;
+      max-height: 320px;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 10px;
+      color: #1a3a5a;
+      letter-spacing: 2px;
+      border-top: 1px solid rgba(14, 165, 233, 0.06);
+    }
+
+    .preview-img { max-width: 100%; max-height: 280px; border-radius: 8px; margin-top: 16px; border: 1px solid var(--border); }
+
+    @media (max-width: 860px) {
+      .grid-main { grid-template-columns: 1fr; }
+      .meta-grid { grid-template-columns: 1fr; }
+      .obj-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="canvas-bg"></canvas>
+
+<div class="ui">
+  <header>
+    <div class="logo-wrap">
+      <div class="logo-hex">⬡</div>
+      <div>
+        <div class="logo-company">Fisher Intelligent Systems</div>
+        <div class="logo-product">Advanced CV Auto-Labeling Platform</div>
+      </div>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot"></div>
+      AI VISION ACTIVE
+    </div>
+    <div class="header-right">
+      CDAO ENTERPRISE AUTONOMY<br>
+      UNCLASSIFIED // FOUO
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="hero-badge">⬡ AI-Native · COCO Compatible · Multi-Modal</div>
+    <h1>Advanced Data Labeling for<br>Autonomous Platform Training</h1>
+    <p>Multi-modal AI vision pipeline that labels EO/IR imagery with rich metadata — bounding boxes, oriented bounding boxes, 6DoF pose, semantic features, weather, lighting, sensor characteristics — far beyond traditional bounding-box-only labeling.</p>
+  </div>
+
+  <div class="main-wrap">
+
+    <div class="upload-panel">
+      <div class="panel-title">Image Submission — EO/IR or FMV Frame</div>
+
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+        <div class="dropzone-icon">⬡</div>
+        <div class="dropzone-text">Drop image or click to upload</div>
+        <div class="dropzone-sub">JPG · PNG · WEBP · MAX 15MB</div>
+      </div>
+
+      <input type="file" id="fileInput" accept="image/*" />
+      <img id="previewImg" class="preview-img" style="display:none;" />
+
+      <button class="run-btn" id="submitBtn" onclick="runLabel()" disabled>Auto-Label This Image</button>
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="loader-ring"></div>
+      <p>Running AI vision pipeline...</p>
+    </div>
+
+    <div class="results" id="results">
+
+      <div class="grid-main">
+        <div class="panel">
+          <div class="panel-title">Annotated Image</div>
+          <div class="canvas-wrap">
+            <canvas id="imgCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Scene Conditions</div>
+          <div class="meta-grid" id="sceneMeta"></div>
+          <div class="panel-title" style="margin-top:20px;">Sensor Metadata</div>
+          <div class="meta-grid" id="sensorMeta"></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-title">Detected Objects — Extended Annotations</div>
+        <div class="obj-list" id="objList"></div>
+      </div>
+
+      <div class="panel json-panel">
+        <div class="json-header">
+          <div class="json-title">COCO-JSON Output (DOTA + BOP Extensions)</div>
+          <div class="btn-row">
+            <button class="copy-btn" onclick="copyJSON()">COPY</button>
+            <button class="download-btn" onclick="downloadJSON()">DOWNLOAD</button>
+          </div>
+        </div>
+        <pre id="jsonOutput"></pre>
+      </div>
+
+    </div>
+  </div>
+
+  <footer>FISHER INTELLIGENT SYSTEMS &nbsp;·&nbsp; CDAO ADL &nbsp;·&nbsp; UNCLASSIFIED // FOUO</footer>
+</div>
+
+<script>
+// ── THREE.JS BACKGROUND ──
+(function() {
+  const canvas = document.getElementById('canvas-bg');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x000000, 0);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 0, 3);
+
+  // Grid mesh — neural network style
+  const gridSize = 30;
+  const points = [];
+  for (let i = -gridSize/2; i < gridSize/2; i += 0.5) {
+    for (let j = -gridSize/2; j < gridSize/2; j += 0.5) {
+      points.push(i, Math.sin(i*0.3)*Math.cos(j*0.3)*0.5 - 2, j);
+    }
+  }
+  const gridGeo = new THREE.BufferGeometry();
+  gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+  const gridMat = new THREE.PointsMaterial({ color: 0x0ea5e9, size: 0.02, transparent: true, opacity: 0.5 });
+  const grid = new THREE.Points(gridGeo, gridMat);
+  grid.rotation.x = -Math.PI / 4;
+  scene.add(grid);
+
+  // Floating particles
+  const partPositions = [];
+  for (let i = 0; i < 600; i++) {
+    partPositions.push((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8);
+  }
+  const partGeo = new THREE.BufferGeometry();
+  partGeo.setAttribute('position', new THREE.Float32BufferAttribute(partPositions, 3));
+  const partMat = new THREE.PointsMaterial({ color: 0x22d3ee, size: 0.012, transparent: true, opacity: 0.3 });
+  const particles = new THREE.Points(partGeo, partMat);
+  scene.add(particles);
+
+  let t = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    t += 0.002;
+    grid.rotation.z = t * 0.1;
+    particles.rotation.y = t * 0.05;
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+
+// ── APP STATE ──
+let currentFile = null;
+let currentImage = null;
+let lastResult = null;
+
+// File handling
+const fileInput = document.getElementById('fileInput');
+const dropzone = document.getElementById('dropzone');
+const previewImg = document.getElementById('previewImg');
+const submitBtn = document.getElementById('submitBtn');
+
+fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  currentFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    previewImg.src = e.target.result;
+    previewImg.style.display = 'block';
+    const img = new Image();
+    img.onload = () => { currentImage = img; };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  submitBtn.disabled = false;
+}
+
+async function runLabel() {
+  if (!currentFile) return;
+  submitBtn.disabled = true;
+  document.getElementById('loading').classList.add('visible');
+  document.getElementById('results').classList.remove('visible');
+
+  const formData = new FormData();
+  formData.append('image', currentFile);
+
+  try {
+    const res = await fetch('/api/label', { method: 'POST', body: formData });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+    const data = await res.json();
+    lastResult = data;
+    renderResults(data);
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    document.getElementById('loading').classList.remove('visible');
+    submitBtn.disabled = false;
+  }
+}
+
+function renderResults(data) {
+  // Draw image with annotations
+  const canvas = document.getElementById('imgCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = currentImage.naturalWidth;
+  const H = currentImage.naturalHeight;
+  canvas.width = W;
+  canvas.height = H;
+  ctx.drawImage(currentImage, 0, 0);
+
+  // Draw bounding boxes
+  const colors = ['#22d3ee', '#10b981', '#f59e0b', '#a78bfa', '#f472b6', '#fb923c'];
+  (data.annotations || []).forEach((ann, i) => {
+    const c = colors[i % colors.length];
+    const [x, y, w, h] = ann.bbox;
+    ctx.strokeStyle = c;
+    ctx.lineWidth = Math.max(2, W / 400);
+    ctx.strokeRect(x * W, y * H, w * W, h * H);
+
+    // Label background
+    ctx.fillStyle = c;
+    const label = `${ann.category} ${(ann.confidence * 100).toFixed(0)}%`;
+    ctx.font = `bold ${Math.max(14, W/60)}px 'Space Grotesk', sans-serif`;
+    const tw = ctx.measureText(label).width + 12;
+    const th = Math.max(20, W/40);
+    ctx.fillRect(x * W, y * H - th, tw, th);
+    ctx.fillStyle = '#020810';
+    ctx.fillText(label, x * W + 6, y * H - 6);
+  });
+
+  // Scene conditions
+  const sc = data.scene_conditions || {};
+  document.getElementById('sceneMeta').innerHTML = `
+    <div class="meta-card"><div class="meta-label">Weather</div><div class="meta-value">${sc.weather || 'N/A'}</div></div>
+    <div class="meta-card"><div class="meta-label">Lighting</div><div class="meta-value">${sc.lighting || 'N/A'}</div></div>
+    <div class="meta-card"><div class="meta-label">Light Source</div><div class="meta-value">${sc.lighting_source_orientation || 'N/A'}</div></div>
+    <div class="meta-card"><div class="meta-label">Visibility</div><div class="meta-value">${sc.visibility_quality || 'N/A'}</div></div>
+  `;
+
+  // Sensor metadata
+  const im = data.image_metadata || {};
+  document.getElementById('sensorMeta').innerHTML = `
+    <div class="meta-card"><div class="meta-label">Domain</div><div class="meta-value">${im.domain || 'N/A'}</div></div>
+    <div class="meta-card"><div class="meta-label">Sensor Type</div><div class="meta-value">${im.sensor_type || 'N/A'}</div></div>
+    <div class="meta-card"><div class="meta-label">Resolution</div><div class="meta-value" style="font-size:11px;">${im.estimated_resolution || 'N/A'}</div></div>
+    <div class="meta-card"><div class="meta-label">Look Angle</div><div class="meta-value">${im.look_angle || 'N/A'}</div></div>
+  `;
+
+  // Object list
+  const objHTML = (data.annotations || []).map((ann, i) => {
+    const c = colors[i % colors.length];
+    const dims = ann.estimated_dimensions || {};
+    const pose = ann.pose_6dof || {};
+    return `
+      <div class="obj-row" style="border-left:3px solid ${c};">
+        <div class="obj-header">
+          <div class="obj-name">${ann.category}</div>
+          <div class="obj-conf">CONF ${(ann.confidence*100).toFixed(0)}%</div>
+        </div>
+        <div class="obj-grid">
+          <div class="obj-pill">L: ${dims.length_m || '–'}m</div>
+          <div class="obj-pill">YAW: ${pose.yaw_deg ?? '–'}°</div>
+          <div class="obj-pill">OCC: ${ann.occlusion_percent ?? 0}%</div>
+        </div>
+        ${ann.key_features?.length ? `<div class="obj-features">Features: ${ann.key_features.join(', ')}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+  document.getElementById('objList').innerHTML = objHTML || '<div style="color:var(--muted);font-size:12px;">No objects detected.</div>';
+
+  // JSON
+  document.getElementById('jsonOutput').textContent = JSON.stringify(data, null, 2);
+  document.getElementById('results').classList.add('visible');
+}
+
+function copyJSON() {
+  if (!lastResult) return;
+  navigator.clipboard.writeText(JSON.stringify(lastResult, null, 2));
+  event.target.textContent = 'COPIED ✓';
+  setTimeout(() => event.target.textContent = 'COPY', 2000);
+}
+
+function downloadJSON() {
+  if (!lastResult) return;
+  const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `coco_annotations_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>

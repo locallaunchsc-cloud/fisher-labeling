@@ -386,7 +386,7 @@
 </div>
 
 <script>
-// ── THREE.JS BACKGROUND ──
+// ── THREE.JS TACTICAL SCAN BACKGROUND ──
 (function() {
   const canvas = document.getElementById('canvas-bg');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -396,40 +396,192 @@
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 0, 3);
+  camera.position.set(0, 1.8, 7);
+  camera.lookAt(0, 0, 0);
 
-  // Grid mesh — neural network style
-  const gridSize = 30;
-  const points = [];
-  for (let i = -gridSize/2; i < gridSize/2; i += 0.5) {
-    for (let j = -gridSize/2; j < gridSize/2; j += 0.5) {
-      points.push(i, Math.sin(i*0.3)*Math.cos(j*0.3)*0.5 - 2, j);
+  // === FLOWING WIREFRAME TERRAIN ===
+  const terrainSegs = 70;
+  const terrainGeo = new THREE.PlaneGeometry(50, 50, terrainSegs, terrainSegs);
+  const terrainMat = new THREE.MeshBasicMaterial({
+    color: 0x0ea5e9,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.22
+  });
+  const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+  terrain.rotation.x = -Math.PI / 2.1;
+  terrain.position.y = -3.2;
+  scene.add(terrain);
+  const basePos = terrainGeo.attributes.position.array.slice();
+
+  // === FLOATING DETECTION BOXES (object detection visualization) ===
+  const boxes = [];
+  for (let i = 0; i < 9; i++) {
+    const size = 0.3 + Math.random() * 0.55;
+    const geo = new THREE.BoxGeometry(size, size, size);
+    const edges = new THREE.EdgesGeometry(geo);
+    const mat = new THREE.LineBasicMaterial({
+      color: i % 3 === 0 ? 0x22d3ee : 0x0ea5e9,
+      transparent: true,
+      opacity: 0.55
+    });
+    const box = new THREE.LineSegments(edges, mat);
+    box.position.set(
+      (Math.random() - 0.5) * 13,
+      (Math.random() - 0.5) * 4 + 1,
+      (Math.random() - 0.5) * 7 - 2
+    );
+    box.userData = {
+      rotX: (Math.random() - 0.5) * 0.012,
+      rotY: (Math.random() - 0.5) * 0.012,
+      floatPhase: Math.random() * Math.PI * 2,
+      floatSpeed: 0.4 + Math.random() * 0.6,
+      baseY: box.position.y,
+      pulsePhase: Math.random() * Math.PI * 2
+    };
+    scene.add(box);
+    boxes.push(box);
+  }
+
+  // === RADAR SCAN RING (pulses outward from center) ===
+  const scanRings = [];
+  for (let i = 0; i < 3; i++) {
+    const ringGeo = new THREE.RingGeometry(0.5, 0.55, 96);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x22d3ee,
+      transparent: true,
+      opacity: 0.6,
+      side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = -3.1;
+    ring.userData = { offset: i * 1.33 };
+    scene.add(ring);
+    scanRings.push(ring);
+  }
+
+  // === HORIZONTAL SCAN LINE (sweeps vertically) ===
+  const scanLineGeo = new THREE.PlaneGeometry(50, 0.04);
+  const scanLineMat = new THREE.MeshBasicMaterial({
+    color: 0x22d3ee,
+    transparent: true,
+    opacity: 0.5,
+    side: THREE.DoubleSide
+  });
+  const scanLine = new THREE.Mesh(scanLineGeo, scanLineMat);
+  scanLine.position.z = -2;
+  scene.add(scanLine);
+
+  // === FLOATING DATA POINTS ===
+  const dataPoints = [];
+  for (let i = 0; i < 90; i++) {
+    const geo = new THREE.SphereGeometry(0.025, 6, 6);
+    const mat = new THREE.MeshBasicMaterial({
+      color: i % 4 === 0 ? 0x22d3ee : 0x0ea5e9,
+      transparent: true,
+      opacity: 0.35
+    });
+    const pt = new THREE.Mesh(geo, mat);
+    pt.position.set(
+      (Math.random() - 0.5) * 16,
+      (Math.random() - 0.5) * 6 + 1,
+      (Math.random() - 0.5) * 8
+    );
+    pt.userData = {
+      vx: (Math.random() - 0.5) * 0.008,
+      vy: (Math.random() - 0.5) * 0.004,
+      vz: (Math.random() - 0.5) * 0.008,
+      pulse: Math.random() * Math.PI * 2
+    };
+    scene.add(pt);
+    dataPoints.push(pt);
+  }
+
+  // === CONNECTING LINES (neural-net feel between nearest points) ===
+  const linesGeo = new THREE.BufferGeometry();
+  const linesMat = new THREE.LineBasicMaterial({
+    color: 0x0ea5e9,
+    transparent: true,
+    opacity: 0.08
+  });
+  const linesObj = new THREE.LineSegments(linesGeo, linesMat);
+  scene.add(linesObj);
+
+  function updateConnections() {
+    const verts = [];
+    for (let i = 0; i < dataPoints.length; i++) {
+      for (let j = i + 1; j < dataPoints.length; j++) {
+        const dx = dataPoints[i].position.x - dataPoints[j].position.x;
+        const dy = dataPoints[i].position.y - dataPoints[j].position.y;
+        const dz = dataPoints[i].position.z - dataPoints[j].position.z;
+        const distSq = dx*dx + dy*dy + dz*dz;
+        if (distSq < 1.5) {
+          verts.push(
+            dataPoints[i].position.x, dataPoints[i].position.y, dataPoints[i].position.z,
+            dataPoints[j].position.x, dataPoints[j].position.y, dataPoints[j].position.z
+          );
+        }
+      }
     }
+    linesGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    linesGeo.attributes.position.needsUpdate = true;
   }
-  const gridGeo = new THREE.BufferGeometry();
-  gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
-  const gridMat = new THREE.PointsMaterial({ color: 0x0ea5e9, size: 0.02, transparent: true, opacity: 0.5 });
-  const grid = new THREE.Points(gridGeo, gridMat);
-  grid.rotation.x = -Math.PI / 4;
-  scene.add(grid);
 
-  // Floating particles
-  const partPositions = [];
-  for (let i = 0; i < 600; i++) {
-    partPositions.push((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8);
-  }
-  const partGeo = new THREE.BufferGeometry();
-  partGeo.setAttribute('position', new THREE.Float32BufferAttribute(partPositions, 3));
-  const partMat = new THREE.PointsMaterial({ color: 0x22d3ee, size: 0.012, transparent: true, opacity: 0.3 });
-  const particles = new THREE.Points(partGeo, partMat);
-  scene.add(particles);
-
+  // === ANIMATION LOOP ===
   let t = 0;
+  let frame = 0;
   function animate() {
     requestAnimationFrame(animate);
-    t += 0.002;
-    grid.rotation.z = t * 0.1;
-    particles.rotation.y = t * 0.05;
+    t += 0.01;
+    frame++;
+
+    // Flowing terrain
+    const positions = terrainGeo.attributes.position.array;
+    for (let i = 0; i < positions.length; i += 3) {
+      const x = basePos[i];
+      const y = basePos[i + 1];
+      positions[i + 2] = Math.sin(x * 0.25 + t) * 0.35 + Math.cos(y * 0.3 + t * 0.6) * 0.35;
+    }
+    terrainGeo.attributes.position.needsUpdate = true;
+
+    // Floating boxes
+    boxes.forEach(box => {
+      box.rotation.x += box.userData.rotX;
+      box.rotation.y += box.userData.rotY;
+      box.position.y = box.userData.baseY + Math.sin(t * box.userData.floatSpeed + box.userData.floatPhase) * 0.35;
+      box.material.opacity = 0.35 + Math.sin(t * 1.4 + box.userData.pulsePhase) * 0.3;
+    });
+
+    // Pulsing scan rings (3 staggered)
+    scanRings.forEach(ring => {
+      const phase = ((t + ring.userData.offset) * 0.45) % 4;
+      ring.scale.set(0.3 + phase * 2.5, 0.3 + phase * 2.5, 1);
+      ring.material.opacity = Math.max(0, 0.55 - phase / 4);
+    });
+
+    // Sweeping scan line
+    scanLine.position.y = ((t * 0.35) % 5) - 2.5;
+    scanLine.material.opacity = Math.max(0, 0.45 - Math.abs(scanLine.position.y) / 5);
+
+    // Drifting data points
+    dataPoints.forEach(pt => {
+      pt.position.x += pt.userData.vx;
+      pt.position.y += pt.userData.vy;
+      pt.position.z += pt.userData.vz;
+      pt.material.opacity = 0.25 + Math.sin(t * 1.8 + pt.userData.pulse) * 0.2;
+      if (Math.abs(pt.position.x) > 8) pt.userData.vx *= -1;
+      if (Math.abs(pt.position.y) > 4) pt.userData.vy *= -1;
+      if (Math.abs(pt.position.z) > 4) pt.userData.vz *= -1;
+    });
+
+    // Update neural connections every 6 frames
+    if (frame % 6 === 0) updateConnections();
+
+    // Subtle camera sway
+    camera.position.x = Math.sin(t * 0.12) * 0.4;
+    camera.lookAt(0, 0, 0);
+
     renderer.render(scene, camera);
   }
   animate();

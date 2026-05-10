@@ -99,14 +99,28 @@ app.post('/api/label', upload.single('image'), async (req, res) => {
     });
 
     let text = message.content[0].text.trim();
-    // Strip markdown code fences if present
-    text = text.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
+
+    // Strip markdown code fences (any variation)
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+
+    // If there's any preamble or trailing text, extract just the JSON object
+    if (!text.startsWith('{')) {
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        text = text.substring(firstBrace, lastBrace + 1);
+      }
+    }
 
     let parsed;
     try {
       parsed = JSON.parse(text);
     } catch (e) {
-      return res.status(500).json({ error: 'Model returned non-JSON output', raw: text });
+      console.error('JSON parse failed. Raw response (first 500 chars):', text.substring(0, 500));
+      return res.status(500).json({
+        error: 'Model returned non-JSON output',
+        raw: text.substring(0, 1500)
+      });
     }
 
     // Wrap in standard COCO container with image record
